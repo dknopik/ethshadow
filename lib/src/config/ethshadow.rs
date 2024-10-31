@@ -5,6 +5,7 @@ use crate::clients::lighthouse_bootnode::LighthouseBootnode;
 use crate::clients::lighthouse_vc::LighthouseValidatorClient;
 use crate::clients::prometheus::Prometheus;
 use crate::clients::reth::Reth;
+use crate::clients::teku::Teku;
 use crate::clients::Client;
 use crate::config::one_or_many::OneOrMany;
 use crate::error::Error;
@@ -349,6 +350,7 @@ impl EthShadowConfig {
         self.add_builtin_client("lighthouse", Lighthouse::default());
         self.add_builtin_client("lighthouse_vc", LighthouseValidatorClient::default());
         self.add_builtin_client("prometheus", Prometheus::default());
+        self.add_builtin_client("teku", Teku::default());
     }
 
     pub fn add_builtin_location<const N: usize>(

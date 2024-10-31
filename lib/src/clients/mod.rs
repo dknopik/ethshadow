@@ -19,7 +19,9 @@ pub mod lighthouse_bootnode;
 pub mod lighthouse_vc;
 pub mod prometheus;
 pub mod reth;
+pub mod teku;
 
+#[derive(Deserialize, Clone, Debug, Copy)]
 pub enum ValidatorDemand {
     /// We do not need validator keys. The validator slice will be empty.
     None,
