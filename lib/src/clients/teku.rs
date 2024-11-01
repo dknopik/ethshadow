@@ -4,7 +4,8 @@ use crate::clients::{BEACON_API_PORT, CL_PROMETHEUS_PORT, ENGINE_API_PORT};
 use crate::config::shadow::Process;
 use crate::node::{NodeInfo, SimulationContext};
 use crate::validators::Validator;
-use crate::Error;
+use crate::{CowStr, Error};
+use itertools::Itertools;
 use log::{debug, error};
 use serde::Deserialize;
 use std::collections::HashMap;
@@ -19,6 +20,7 @@ pub struct Teku {
     #[serde(flatten)]
     pub common: CommonParams,
     pub validators: ValidatorDemand,
+    pub environment: HashMap<CowStr, CowStr>,
 }
 
 impl Default for Teku {
@@ -26,6 +28,7 @@ impl Default for Teku {
         Teku {
             common: CommonParams::default(),
             validators: ValidatorDemand::Any,
+            environment: HashMap::new(),
         }
     }
 }
@@ -52,26 +55,23 @@ impl Client for Teku {
         let validator_arg = if validators.is_empty() {
             String::new()
         } else {
-            let secrets_dest = dir.join("secrets");
-            fs::create_dir_all(&secrets_dest)?;
             let validators_dest = dir.join("validators");
             fs::create_dir_all(&validators_dest)?;
 
             for validator in validators {
-                let key = validator.key();
+                let key = validator.key().to_str().ok_or(Error::NonUTF8Path)?;
                 fs::rename(
                     validator.base_path().join("secrets").join(key),
-                    secrets_dest.join(key),
+                    validators_dest.join(format!("{key}.txt")),
                 )?;
                 fs::rename(
-                    validator.base_path().join("keys").join(key),
-                    validators_dest.join(key),
+                    validator.base_path().join("keys").join(key).join("voting-keystore.json"),
+                    validators_dest.join(format!("{key}.json")),
                 )?;
             }
             format!(
-                "\\\"--validator-keys={}:{}\\\"",
+                "\\\"--validator-keys={}:{0}\\\"",
                 validators_dest.to_str().ok_or(Error::NonUTF8Path)?,
-                secrets_dest.to_str().ok_or(Error::NonUTF8Path)?
             )
         };
 
@@ -87,12 +87,12 @@ impl Client for Teku {
                 exec() {{
                 echo $*
                 }}
-                cd $(dirname $(realpath $(which {0}))) && \
-                BASH_ARGV0={0} && \
+                cd $(dirname $(realpath $(which {1}))) && \
+                BASH_ARGV0={1} {}&& \
                 source {} \
                 \\\"--network={}/config.yaml\\\" \
                 --eth1-deposit-contract-address=0x4242424242424242424242424242424242424242 \
-                \\\"--genesis-state={1}/genesis.ssz\\\" \
+                \\\"--genesis-state={2}/genesis.ssz\\\" \
                 \\\"--data-path={dir}\\\" \
                 --ee-endpoint=http://localhost:{ENGINE_API_PORT} \
                 \\\"--ee-jwt-secret-file={}\\\" \
@@ -105,11 +105,12 @@ impl Client for Teku {
                 --metrics-interface=0.0.0.0 \
                 --metrics-port={CL_PROMETHEUS_PORT} \
                 --metrics-enabled=true {validator_arg} {}",
+            self.environment.iter().map(|(k, v)| format!("&& {k}=\"{v}\" ")).join(""),
             self.common.executable_or("teku"),
             ctx.metadata_path().to_str().ok_or(Error::NonUTF8Path)?,
             ctx.jwt_path().to_str().ok_or(Error::NonUTF8Path)?,
             ctx.cl_bootnode_enrs().join(","),
-            self.common.arguments(""),
+            self.common.arguments("--validators-proposer-default-fee-recipient=0xf97e180c050e5Ab072211Ad2C213Eb5AEE4DF134"),
         ));
         debug!("Invoking: {command:?}");
         let output = command.output()?;
