@@ -21,6 +21,7 @@ pub struct Teku {
     pub common: CommonParams,
     pub validators: ValidatorDemand,
     pub environment: HashMap<CowStr, CowStr>,
+    pub use_unsafe_test_stub: bool
 }
 
 impl Default for Teku {
@@ -29,6 +30,7 @@ impl Default for Teku {
             common: CommonParams::default(),
             validators: ValidatorDemand::Any,
             environment: HashMap::new(),
+            use_unsafe_test_stub: false,
         }
     }
 }
@@ -75,6 +77,14 @@ impl Client for Teku {
             )
         };
 
+        let ee_config = if !self.use_unsafe_test_stub {
+            &format!("--ee-endpoint=http://localhost:{ENGINE_API_PORT} \
+                        \\\"--ee-jwt-secret-file={}\\\"",
+                    ctx.jwt_path().to_str().ok_or(Error::NonUTF8Path)?)
+        } else {
+            "--ee-endpoint=unsafe-test-stub"
+        };
+
         let dir = dir.to_str().ok_or(Error::NonUTF8Path)?;
 
         // problem: the command "teku" is a shell script - but shadow needs an ELF. In that script
@@ -94,8 +104,7 @@ impl Client for Teku {
                 --eth1-deposit-contract-address=0x4242424242424242424242424242424242424242 \
                 \\\"--genesis-state={2}/genesis.ssz\\\" \
                 \\\"--data-path={dir}\\\" \
-                --ee-endpoint=http://localhost:{ENGINE_API_PORT} \
-                \\\"--ee-jwt-secret-file={}\\\" \
+                {ee_config} \
                 --p2p-discovery-bootnodes={} \
                 --p2p-port={PORT} \
                 --p2p-advertised-ip={ip} \
@@ -108,7 +117,6 @@ impl Client for Teku {
             self.environment.iter().map(|(k, v)| format!("&& {k}=\"{v}\" ")).join(""),
             self.common.executable_or("teku"),
             ctx.metadata_path().to_str().ok_or(Error::NonUTF8Path)?,
-            ctx.jwt_path().to_str().ok_or(Error::NonUTF8Path)?,
             ctx.cl_bootnode_enrs().join(","),
             self.common.arguments("--validators-proposer-default-fee-recipient=0xf97e180c050e5Ab072211Ad2C213Eb5AEE4DF134"),
         ));
